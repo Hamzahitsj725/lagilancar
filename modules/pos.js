@@ -72,27 +72,38 @@ export function renderQuickCashButtons() {
     if (!metodeSelect || !inputBayar) return;
 
     if (metodeSelect.value !== 'Tunai') {
-        if (wrapper) wrapper.innerHTML = '';
+        if (wrapper) {
+            wrapper.innerHTML = '';
+            wrapper.classList.add('hidden');
+        }
         return;
     }
 
     const total = store.keranjangPOS.reduce((sum, item) => sum + item.subtotal, 0);
-    const presets = [10000, 20000, 50000, 100000, 200000];
+    const presets = [10000, 25000, 50000, 100000, 200000, 500000];
 
-    if (!wrapper) {
+    let finalWrapper = wrapper;
+    if (!finalWrapper) {
         const parent = document.getElementById('container-nominal-bayar');
         if (!parent) return;
-        const div = document.createElement('div');
-        div.id = 'quick-cash-buttons';
-        div.className = 'quick-cash-buttons';
-        parent.appendChild(div);
+        finalWrapper = document.createElement('div');
+        finalWrapper.id = 'quick-cash-buttons';
+        finalWrapper.className = 'quick-cash-buttons';
+        parent.appendChild(finalWrapper);
     }
 
-    const finalWrapper = document.getElementById('quick-cash-buttons');
+    finalWrapper.classList.remove('hidden');
+
+    if (total <= 0) {
+        finalWrapper.innerHTML = '<div class="text-[10px] text-slate-500 italic">Tambah produk terlebih dahulu untuk menampilkan nominal cepat.</div>';
+        return;
+    }
+
     finalWrapper.innerHTML = presets.map((nominal) => {
         const label = `Rp ${Number(nominal).toLocaleString('id-ID')}`;
+        const selected = Number(inputBayar.value || 0) === Math.max(nominal, total);
         return `
-            <button type="button" class="quick-cash-btn" data-amount="${nominal}">
+            <button type="button" class="quick-cash-btn ${selected ? 'selected' : ''}" data-amount="${nominal}">
                 ${label}
             </button>
         `;
@@ -104,6 +115,10 @@ export function renderQuickCashButtons() {
             const bayar = Math.max(nominal, total);
             inputBayar.value = bayar;
             inputBayar.focus();
+
+            finalWrapper.querySelectorAll('.quick-cash-btn').forEach((el) => {
+                el.classList.toggle('selected', el === btn);
+            });
         });
     });
 }
@@ -178,6 +193,7 @@ export function handleMetodeBayarChange() {
     const containerRef = document.getElementById('container-ref-bayar');
     const inputBayar = document.getElementById('pos-bayar');
     const labelNominal = document.getElementById('label-nominal-bayar');
+    const quickCashWrapper = document.getElementById('quick-cash-buttons');
     if (!metodeSelect || !inputBayar || !labelNominal) return;
 
     const metode = metodeSelect.value;
@@ -194,8 +210,10 @@ export function handleMetodeBayarChange() {
         inputBayar.value = total;
         inputBayar.readOnly = true;
         if (containerRef) containerRef.classList.remove('hidden');
-        const wrapper = document.getElementById('quick-cash-buttons');
-        if (wrapper) wrapper.innerHTML = '';
+        if (quickCashWrapper) {
+            quickCashWrapper.innerHTML = '';
+            quickCashWrapper.classList.add('hidden');
+        }
     }
 }
 
