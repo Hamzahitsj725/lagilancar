@@ -41,7 +41,6 @@ export function ubahTemaAplikasi(tema) {
 function applyTheme(tema) {
     document.documentElement.setAttribute('data-theme', tema);
 
-    // Update body classes based on theme for Tailwind compatibility
     const body = document.body;
     if (tema === 'light') {
         body.classList.remove('text-slate-100');
@@ -51,7 +50,6 @@ function applyTheme(tema) {
         body.classList.add('text-slate-100');
     }
 
-    // Update theme picker button active state
     updateThemePickerUI(tema);
 }
 
@@ -70,13 +68,88 @@ function updateThemePickerUI(activeTema) {
 }
 
 // ==============================================================================
+// SIDEBAR COMPACT / ICON MODE
+// ==============================================================================
+
+function wrapSidebarTextLabels() {
+    const sidebarNav = document.getElementById('sidebar-nav');
+    if (!sidebarNav) return;
+
+    sidebarNav.querySelectorAll('button').forEach((btn) => {
+        if (btn.querySelector('.sidebar-btn-label')) return;
+
+        const nodes = Array.from(btn.childNodes);
+        nodes.forEach((node) => {
+            if (node.nodeType === 3 && node.textContent.trim()) {
+                const span = document.createElement('span');
+                span.className = 'sidebar-btn-label';
+                span.textContent = node.textContent.trim();
+                btn.insertBefore(span, node);
+                btn.removeChild(node);
+            }
+        });
+    });
+}
+
+export function initSidebarCompactState() {
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+
+    wrapSidebarTextLabels();
+
+    const compact = localStorage.getItem('sim-market-sidebar-compact') === '1';
+    sidebar.classList.toggle('sidebar-compact', compact);
+}
+
+export function compactSidebar(forceCompact = null) {
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+
+    if (forceCompact === null) {
+        const next = !sidebar.classList.contains('sidebar-compact');
+        sidebar.classList.toggle('sidebar-compact', next);
+        localStorage.setItem('sim-market-sidebar-compact', next ? '1' : '0');
+    } else {
+        sidebar.classList.toggle('sidebar-compact', forceCompact);
+        localStorage.setItem('sim-market-sidebar-compact', forceCompact ? '1' : '0');
+    }
+}
+
+export function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const menuOverlay = document.getElementById('menu-overlay');
+    if (!sidebar) return;
+
+    const isCompact = sidebar.classList.contains('sidebar-compact');
+    sidebar.classList.toggle('sidebar-hidden');
+
+    if (isCompact) {
+        sidebar.classList.add('sidebar-compact');
+    } else {
+        sidebar.classList.remove('sidebar-compact');
+    }
+
+    const isHidden = sidebar.classList.contains('sidebar-hidden');
+    if (menuOverlay) menuOverlay.classList.toggle('active', !isHidden);
+}
+
+export function hideSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const menuOverlay = document.getElementById('menu-overlay');
+    if (!sidebar) return;
+
+    sidebar.classList.add('sidebar-hidden');
+    sidebar.classList.remove('sidebar-compact');
+    if (menuOverlay) menuOverlay.classList.remove('active');
+}
+
+// ==============================================================================
 // TAB NAVIGATION
 // ==============================================================================
 
 export function switchTab(tabId) {
     if (!tabId) return;
 
-    // Sembunyikan semua tab content
     document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
 
     const targetTab = document.getElementById('tab-' + tabId);
@@ -84,12 +157,10 @@ export function switchTab(tabId) {
         targetTab.classList.remove('hidden');
     }
 
-    // Reset style semua tombol navigasi
     document.querySelectorAll('nav button').forEach(btn => {
         btn.className = "w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 font-medium text-sm text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 border border-transparent smooth-transition";
     });
 
-    // Beri highlight pada tombol tab aktif
     const activeBtn = document.getElementById('btn-' + tabId);
     if (activeBtn) {
         let themeColor = "cyan";
@@ -124,12 +195,10 @@ export function switchTab(tabId) {
     if (titleEl) titleEl.innerText = titles[tabId] || "Dashboard";
     if (descEl) descEl.innerText = descs[tabId] || "";
 
-    // Populate setting page with dynamic user data when navigating to setting tab
     if (tabId === 'setting') {
         populateSettingPage();
     }
 
-    // Tutup sidebar di layar mobile setelah memilih menu
     if (window.innerWidth < 1024) {
         hideSidebar();
     }
@@ -150,32 +219,8 @@ function populateSettingPage() {
     if (emailEl) emailEl.textContent = user?.email || '-';
     if (roleEl) roleEl.textContent = (role || 'Tidak diketahui').toUpperCase();
 
-    // Update active theme in picker
     const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
     updateThemePickerUI(currentTheme);
-}
-
-// ==============================================================================
-// SIDEBAR TOGGLE
-// ==============================================================================
-
-export function toggleSidebar() {
-    const sidebar = document.getElementById('sidebar');
-    const menuOverlay = document.getElementById('menu-overlay');
-    if (!sidebar) return;
-
-    sidebar.classList.toggle('sidebar-hidden');
-    const isHidden = sidebar.classList.contains('sidebar-hidden');
-    if (menuOverlay) menuOverlay.classList.toggle('active', !isHidden);
-}
-
-export function hideSidebar() {
-    const sidebar = document.getElementById('sidebar');
-    const menuOverlay = document.getElementById('menu-overlay');
-    if (!sidebar) return;
-
-    sidebar.classList.add('sidebar-hidden');
-    if (menuOverlay) menuOverlay.classList.remove('active');
 }
 
 // ==============================================================================
@@ -184,14 +229,12 @@ export function hideSidebar() {
 
 export function initGlobalClickDismissers() {
     document.addEventListener('click', (e) => {
-        // Dismiss POS search dropdown
         const searchInput = document.getElementById('pos-produk-search');
         const searchDropdown = document.getElementById('pos-produk-dropdown');
         if (searchInput && searchDropdown && !searchInput.contains(e.target) && !searchDropdown.contains(e.target)) {
             searchDropdown.classList.add('hidden');
         }
 
-        // Dismiss POS customer dropdown
         const customerInput = document.getElementById('pos-customer');
         const customerDropdown = document.getElementById('pos-customer-dropdown');
         if (customerInput && customerDropdown && !customerInput.contains(e.target) && !customerDropdown.contains(e.target)) {
