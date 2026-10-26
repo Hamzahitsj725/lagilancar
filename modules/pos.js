@@ -49,7 +49,6 @@ export function filterProdukPOS() {
             </div>
         `).join('');
 
-        // Pasang event listener ke elemen hasil pencarian
         dropdown.querySelectorAll('.pos-product-item').forEach(el => {
             el.addEventListener('click', () => {
                 const sku = el.getAttribute('data-sku');
@@ -63,6 +62,50 @@ export function filterProdukPOS() {
     if (document.activeElement === searchInput) {
         dropdown.classList.remove('hidden');
     }
+}
+
+// --- QUICK CASH / NOMINAL CEPAT ---
+export function renderQuickCashButtons() {
+    const metodeSelect = document.getElementById('pos-metode-bayar');
+    const inputBayar = document.getElementById('pos-bayar');
+    const wrapper = document.getElementById('quick-cash-buttons');
+    if (!metodeSelect || !inputBayar) return;
+
+    if (metodeSelect.value !== 'Tunai') {
+        if (wrapper) wrapper.innerHTML = '';
+        return;
+    }
+
+    const total = store.keranjangPOS.reduce((sum, item) => sum + item.subtotal, 0);
+    const presets = [10000, 20000, 50000, 100000, 200000];
+
+    if (!wrapper) {
+        const parent = document.getElementById('container-nominal-bayar');
+        if (!parent) return;
+        const div = document.createElement('div');
+        div.id = 'quick-cash-buttons';
+        div.className = 'quick-cash-buttons';
+        parent.appendChild(div);
+    }
+
+    const finalWrapper = document.getElementById('quick-cash-buttons');
+    finalWrapper.innerHTML = presets.map((nominal) => {
+        const label = `Rp ${Number(nominal).toLocaleString('id-ID')}`;
+        return `
+            <button type="button" class="quick-cash-btn" data-amount="${nominal}">
+                ${label}
+            </button>
+        `;
+    }).join('');
+
+    finalWrapper.querySelectorAll('.quick-cash-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const nominal = Number(btn.dataset.amount || 0);
+            const bayar = Math.max(nominal, total);
+            inputBayar.value = bayar;
+            inputBayar.focus();
+        });
+    });
 }
 
 export function pilihProdukPOS(id, nama, harga) {
@@ -145,11 +188,14 @@ export function handleMetodeBayarChange() {
         inputBayar.value = '';
         inputBayar.readOnly = false;
         if (containerRef) containerRef.classList.add('hidden');
+        renderQuickCashButtons();
     } else {
         labelNominal.innerText = "Nominal Mutasi Non-Tunai (Rp)";
         inputBayar.value = total;
         inputBayar.readOnly = true;
         if (containerRef) containerRef.classList.remove('hidden');
+        const wrapper = document.getElementById('quick-cash-buttons');
+        if (wrapper) wrapper.innerHTML = '';
     }
 }
 
@@ -191,7 +237,6 @@ export function tambahItemKeranjang() {
         subtotal: Number(produk.harga) * qty
     });
 
-    // Reset input pencarian
     const searchInput = document.getElementById('pos-produk-search');
     if (searchInput) searchInput.value = '';
     if (pIdInput) pIdInput.value = '';
@@ -216,6 +261,11 @@ export function renderTabelKeranjangPOS() {
     if (keranjang.length === 0) {
         tbody.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-xs text-slate-500 italic">Keranjang belanja kosong.</td></tr>`;
         if (grandTotalEl) grandTotalEl.innerText = "Rp 0";
+        const metodeSelect = document.getElementById('pos-metode-bayar');
+        const inputBayar = document.getElementById('pos-bayar');
+        if (metodeSelect && inputBayar && metodeSelect.value === 'Tunai') {
+            renderQuickCashButtons();
+        }
         return;
     }
 
@@ -237,7 +287,6 @@ export function renderTabelKeranjangPOS() {
         `;
     }).join('');
 
-    // Attach listeners
     tbody.querySelectorAll('.btn-delete-cart').forEach(btn => {
         btn.addEventListener('click', () => {
             const index = parseInt(btn.getAttribute('data-cart-index'), 10);
@@ -251,6 +300,8 @@ export function renderTabelKeranjangPOS() {
     const inputBayar = document.getElementById('pos-bayar');
     if (metodeSelect && inputBayar && metodeSelect.value !== "Tunai") {
         inputBayar.value = gTotal;
+    } else if (metodeSelect && inputBayar && metodeSelect.value === "Tunai") {
+        renderQuickCashButtons();
     }
 }
 
@@ -289,7 +340,6 @@ ${notaData.ref ? `<div>No.Ref: ${notaData.ref}</div>` : ''}
 <div style="text-align: center; font-size: 9px; margin-top: 4px;">-- TERIMA KASIH ATAS KUNJUNGAN ANDA --</div>
     `;
 
-    // Beri sedikit jeda mikro agar DOM dirender sempurna sebelum dialog print muncul
     setTimeout(() => {
         try {
             window.print();
@@ -337,7 +387,6 @@ export async function prosesCheckoutPOS() {
     const waktu = new Date().toLocaleDateString('id-ID') + " " + new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + " WIB";
     const kembalian = bayar - total;
 
-    // Cari member jika terdaftar untuk bonus poin
     const member = store.masterMember.find(m => m.nama.toLowerCase() === customer.toLowerCase());
 
     const dataNota = {
@@ -353,7 +402,6 @@ export async function prosesCheckoutPOS() {
         items: [...keranjang]
     };
 
-    // Payload untuk Database Function / RPC Atomic
     const rpcPayload = {
         p_nota: noNota,
         p_waktu: waktu,
@@ -381,12 +429,10 @@ export async function prosesCheckoutPOS() {
     try {
         let isSavedOffline = false;
 
-        // 1. Jika terdeteksi offline di browser kasir
         if (!navigator.onLine) {
             await queueOfflineTransaction(rpcPayload);
             isSavedOffline = true;
         } else {
-            // 2. Jika online, coba RPC fn_proses_checkout_pos terlebih dahulu
             let rpcBerhasil = false;
             try {
                 const { data, error } = await supabaseClient.rpc('fn_proses_checkout_pos', rpcPayload);
@@ -397,20 +443,17 @@ export async function prosesCheckoutPOS() {
             } catch (rpcErr) {
                 console.warn("Panggilan RPC fn_proses_checkout_pos dialihkan ke fallback:", rpcErr);
 
-                // Periksa apakah koneksi putus saat checkout
                 if (rpcErr.message && (rpcErr.message.includes('fetch') || rpcErr.message.includes('network') || rpcErr.message.includes('Failed to fetch'))) {
                     console.warn("Koneksi internet terputus, menyimpan ke antrian offline...");
                     await queueOfflineTransaction(rpcPayload);
                     isSavedOffline = true;
                 } else {
-                    // Eksekusi fallback direct tabel yang kompatibel langsung dengan skema aktif Supabase
                     console.info("Menjalankan transaksi kasir melalui direct sequential fallback...");
                     await fallbackSequentialCheckout(dataNota, keranjang, member, total);
                 }
             }
         }
 
-        // Perbarui State Lokal
         for (const item of keranjang) {
             const prod = store.masterStok.find(p => p.id_produk === item.id);
             if (prod) {
@@ -426,10 +469,8 @@ export async function prosesCheckoutPOS() {
 
         store.addRiwayatTransaksi(dataNota);
 
-        // Cetak struk nota fisik kasir
         cetakStrukKePrinterFisik(dataNota, isSavedOffline);
 
-        // Bersihkan form POS
         store.clearKeranjang();
         if (bayarInput) bayarInput.value = '';
         if (custInput) custInput.value = '';
@@ -437,7 +478,6 @@ export async function prosesCheckoutPOS() {
         if (metodeSelect) metodeSelect.value = 'Tunai';
         handleMetodeBayarChange();
 
-        // Render ulang tampilan yang terpengaruh
         renderTabelKeranjangPOS();
         renderTabelStok();
         renderTabelMember();
@@ -465,7 +505,6 @@ export async function prosesCheckoutPOS() {
 
 // Fallback sequential checkout yang kompatibel langsung dengan skema aktif tabel Supabase
 async function fallbackSequentialCheckout(dataNota, keranjang, member, total) {
-    // 1. Simpan ke riwayat_transaksi (hanya menyertakan kolom yang ada di database)
     const txInsert = await panggilDatabaseAman({
         tabel: 'riwayat_transaksi',
         aksi: 'INSERT',
@@ -487,7 +526,6 @@ async function fallbackSequentialCheckout(dataNota, keranjang, member, total) {
         throw txInsert.error;
     }
 
-    // 2. Pemotongan stok produk gudang
     for (const item of keranjang) {
         const prod = store.masterStok.find(p => p.id_produk === item.id);
         if (prod) {
@@ -505,7 +543,6 @@ async function fallbackSequentialCheckout(dataNota, keranjang, member, total) {
         }
     }
 
-    // 3. Penambahan poin loyalitas member
     if (member) {
         const nextPoints = (member.poin || 0) + Math.floor(total / 10000);
         const resMem = await panggilDatabaseAman({
