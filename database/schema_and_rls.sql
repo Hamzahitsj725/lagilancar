@@ -3,16 +3,28 @@
 -- SKEMA BASIS DATA LENGKAP, ROW LEVEL SECURITY (RLS), & TRANSAKSI ATOMIC RPC
 -- ==============================================================================
 
--- 1. TABEL: profil (Menyimpan data pengguna dan hak akses jabatan)
-CREATE TABLE IF NOT EXISTS public.profil (
-    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    username TEXT NOT NULL,
-    jabatan TEXT NOT NULL CHECK (jabatan IN ('master admin', 'kasir', 'admin gudang', 'manajer')),
+-- 1. TABEL: toko (Menyimpan data toko / outlet)
+CREATE TABLE IF NOT EXISTS public.toko (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    nama_toko TEXT NOT NULL,
+    nama_pemilik TEXT,
+    alamat TEXT,
+    telepon TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2. TABEL: produk (Menyimpan master inventori SKU minimarket)
+-- 2. TABEL: profil (Menyimpan data pengguna dan hak akses jabatan)
+CREATE TABLE IF NOT EXISTS public.profil (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    username TEXT NOT NULL,
+    jabatan TEXT NOT NULL CHECK (jabatan IN ('master admin', 'kasir', 'admin gudang', 'manajer')),
+    store_id UUID REFERENCES public.toko(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. TABEL: produk (Menyimpan master inventori SKU minimarket)
 CREATE TABLE IF NOT EXISTS public.produk (
     id_produk TEXT PRIMARY KEY,
     nama TEXT NOT NULL,
@@ -23,7 +35,7 @@ CREATE TABLE IF NOT EXISTS public.produk (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. TABEL: member (Menyimpan data keanggotaan dan poin reward)
+-- 4. TABEL: member (Menyimpan data keanggotaan dan poin reward)
 CREATE TABLE IF NOT EXISTS public.member (
     id_member TEXT PRIMARY KEY,
     nama TEXT NOT NULL,
@@ -33,7 +45,7 @@ CREATE TABLE IF NOT EXISTS public.member (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. TABEL: supplier (Menyimpan data vendor/distributor rekanan)
+-- 5. TABEL: supplier (Menyimpan data vendor/distributor rekanan)
 CREATE TABLE IF NOT EXISTS public.supplier (
     id_supplier TEXT PRIMARY KEY,
     nama TEXT NOT NULL,
@@ -43,7 +55,7 @@ CREATE TABLE IF NOT EXISTS public.supplier (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. TABEL: riwayat_transaksi (Menyimpan histori nota penjualan kasir)
+-- 6. TABEL: riwayat_transaksi (Menyimpan histori nota penjualan kasir)
 CREATE TABLE IF NOT EXISTS public.riwayat_transaksi (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     nota TEXT UNIQUE NOT NULL,
@@ -65,6 +77,8 @@ CREATE INDEX IF NOT EXISTS idx_produk_nama ON public.produk(nama);
 CREATE INDEX IF NOT EXISTS idx_member_nama ON public.member(nama);
 CREATE INDEX IF NOT EXISTS idx_transaksi_nota ON public.riwayat_transaksi(nota);
 CREATE INDEX IF NOT EXISTS idx_transaksi_created_at ON public.riwayat_transaksi(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_profil_store_id ON public.profil(store_id);
+CREATE INDEX IF NOT EXISTS idx_toko_nama_toko ON public.toko(nama_toko);
 
 -- ==============================================================================
 -- FUNGSI BANTU PENDETEKSI ROLE PENGGUNA (ROLE CLAIMS DARI PROFIL / JWT)
@@ -97,7 +111,40 @@ $$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
 -- PENGATURAN ROW LEVEL SECURITY (RLS) SECARA KETAT
 -- ==============================================================================
 
--- A. TABEL: profil
+-- A. TABEL: toko
+ALTER TABLE public.toko ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "toko_select_policy" ON public.toko;
+CREATE POLICY "toko_select_policy" ON public.toko
+    FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.profil p
+            WHERE p.store_id = toko.id
+              AND p.id = auth.uid()
+        )
+        OR public.get_current_user_role() = 'master admin'
+    );
+
+DROP POLICY IF EXISTS "toko_insert_policy" ON public.toko;
+CREATE POLICY "toko_insert_policy" ON public.toko
+    FOR INSERT TO authenticated
+    WITH CHECK (true);
+
+DROP POLICY IF EXISTS "toko_update_policy" ON public.toko;
+CREATE POLICY "toko_update_policy" ON public.toko
+    FOR UPDATE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.profil p
+            WHERE p.store_id = toko.id
+              AND p.id = auth.uid()
+              AND p.jabatan = 'master admin'
+        )
+        OR public.get_current_user_role() = 'master admin'
+    );
+
+-- B. TABEL: profil
 ALTER TABLE public.profil ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "profil_select_policy" ON public.profil;
@@ -125,7 +172,7 @@ CREATE POLICY "profil_insert_policy" ON public.profil
     );
 
 
--- B. TABEL: produk
+-- C. TABEL: produk
 ALTER TABLE public.produk ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "produk_select_policy" ON public.produk;
@@ -157,7 +204,7 @@ CREATE POLICY "produk_delete_policy" ON public.produk
     );
 
 
--- C. TABEL: member
+-- D. TABEL: member
 ALTER TABLE public.member ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "member_select_policy" ON public.member;
@@ -189,7 +236,7 @@ CREATE POLICY "member_delete_policy" ON public.member
     );
 
 
--- D. TABEL: supplier
+-- E. TABEL: supplier
 ALTER TABLE public.supplier ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "supplier_select_policy" ON public.supplier;
@@ -221,7 +268,7 @@ CREATE POLICY "supplier_delete_policy" ON public.supplier
     );
 
 
--- E. TABEL: riwayat_transaksi
+-- F. TABEL: riwayat_transaksi
 ALTER TABLE public.riwayat_transaksi ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "transaksi_select_policy" ON public.riwayat_transaksi;
@@ -272,7 +319,7 @@ CREATE OR REPLACE FUNCTION public.fn_proses_checkout_pos(
 )
 RETURNS JSONB
 LANGUAGE plpgsql
-SECURITY DEFINER -- Berjalan dengan hak akses pembuat fungsi agar proses inventori dan transaksi terjamin atomic
+SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
@@ -316,7 +363,6 @@ BEGIN
             RAISE EXCEPTION 'Kuantitas belanja untuk item "%" tidak valid (%)!', v_prod_name, v_prod_qty;
         END IF;
 
-        -- Ambil stok saat ini dan kunci baris (Pessimistic Locking mencegah race condition)
         SELECT stok INTO v_current_stock
         FROM public.produk
         WHERE id_produk = v_prod_id
@@ -331,7 +377,6 @@ BEGIN
                 v_prod_name, v_current_stock, v_prod_qty;
         END IF;
 
-        -- Pengurangan stok produk secara atomic
         UPDATE public.produk
         SET stok = stok - v_prod_qty,
             updated_at = NOW()
@@ -395,7 +440,6 @@ BEGIN
 
 EXCEPTION
     WHEN OTHERS THEN
-        -- PostgreSQL secara otomatis melakukan ROLLBACK terhadap seluruh perubahan dalam blok fungsi
         RAISE EXCEPTION 'Gagal memproses transaksi atomic POS: %', SQLERRM;
 END;
 $$;
