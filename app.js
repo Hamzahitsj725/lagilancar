@@ -1,3 +1,30 @@
+// Redirect first-time app visitor to registration page if there is no active session.
+const currentPage = window.location.pathname.split('/').pop() || 'index.html';
+
+if (currentPage === 'index.html' || currentPage === '') {
+    const checkSession = async () => {
+        try {
+            const client = window.supabase?.createClient ? window.supabase.createClient(
+                'https://brarwmuhcszekrellnkk.supabase.co',
+                'sb_publishable_O4TWch71_Vtcdagi-YFBpQ_YzggF6OD'
+            ) : null;
+
+            if (!client) {
+                return;
+            }
+
+            const { data: { session } } = await client.auth.getSession();
+            if (!session) {
+                window.location.replace('./register.html');
+            }
+        } catch (error) {
+            console.warn('Gagal memeriksa sesi pengguna:', error);
+        }
+    };
+
+    checkSession();
+}
+
 /**
  * ==============================================================================
  * SISTEM INFORMASI MINIMARKET (SIM-MARKET ENTERPRISE)
